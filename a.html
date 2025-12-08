@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hex Strategy Simulation: Supply & Terrain</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
+        
+        body { font-family: 'Noto Sans KR', sans-serif; overflow: hidden; background-color: #1a202c; }
+        #canvas-container { position: relative; width: 100%; height: 100vh; overflow: hidden; cursor: grab; }
+        #canvas-container:active { cursor: grabbing; }
+        .panel { background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px; width: 16px;
+            border-radius: 50%;
+            background: #60a5fa;
+            cursor: pointer;
+            margin-top: -6px; 
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px;
+            cursor: pointer;
+            background: #475569;
+            border-radius: 2px;
+        }
+        
+        /* Checkbox Style */
+        .custom-checkbox {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .custom-checkbox input {
+            display: none;
+        }
+        .custom-checkbox .checkmark {
+            width: 16px;
+            height: 16px;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            margin-right: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .custom-checkbox input:checked + .checkmark {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+        }
+        .custom-checkbox .checkmark::after {
+            content: '✔';
+            font-size: 10px;
+            color: white;
+            display: none;
+        }
+        .custom-checkbox input:checked + .checkmark::after {
+            display: block;
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- UI Overlay -->
+    <div class="absolute top-4 left-4 z-10 w-80 flex flex-col gap-4 pointer-events-none">
+        <!-- Controls -->
+        <div class="panel p-4 rounded-lg shadow-lg pointer-events-auto max-h-[90vh] overflow-y-auto">
+            <h1 class="text-xl font-bold mb-4 text-blue-400">전략 시뮬레이션 설정</h1>
+            
+            <!-- Seed Input -->
+            <div class="mb-4">
+                <label class="text-xs text-gray-300 block mb-1">맵 시드 (Seed)</label>
+                <div class="flex gap-2">
+                    <input type="number" id="map-seed" class="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm focus:outline-none focus:border-blue-500" placeholder="Random">
+                    <button onclick="generateNewSeed()" class="px-3 bg-gray-700 hover:bg-gray-600 rounded text-xs">🎲</button>
+                </div>
+            </div>
+
+            <!-- Map Settings -->
+            <div class="space-y-4 mb-6">
+                <!-- Water Controls -->
+                <div class="bg-slate-800/50 p-2 rounded border border-slate-700">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-gray-300">수위 설정</span>
+                        <label class="custom-checkbox text-xs">
+                            <input type="checkbox" id="param-no-water" onchange="generateWorld()">
+                            <span class="checkmark"></span>
+                            바다 없음 (전체 육지)
+                        </label>
+                    </div>
+                    
+                    <div id="sea-slider-container">
+                        <div class="flex justify-between text-xs text-gray-400 mb-1">
+                            <span>수위 (Sea Level)</span>
+                            <span id="val-sea">중간</span>
+                        </div>
+                        <input type="range" id="param-sea" min="-0.5" max="0.55" step="0.01" value="0.2" class="w-full" 
+                               oninput="updateLabel('val-sea', this.value, 'sea')">
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>기온 (Global Temp)</span>
+                        <span id="val-temp">중간</span>
+                    </div>
+                    <input type="range" id="param-temp" min="-0.5" max="0.5" step="0.05" value="0" class="w-full" 
+                           oninput="updateLabel('val-temp', this.value, 'temp')">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>습도 (Moisture)</span>
+                        <span id="val-moisture">중간</span>
+                    </div>
+                    <input type="range" id="param-moisture" min="-0.4" max="0.4" step="0.05" value="0" class="w-full" 
+                           oninput="updateLabel('val-moisture', this.value, 'moisture')">
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>험도 (산맥 빈도)</span>
+                        <span id="val-rough" class="text-xs">중간</span>
+                    </div>
+                    <input type="range" id="param-rough" min="-0.8" max="0.5" step="0.05" value="0" class="w-full" 
+                           oninput="updateLabel('val-rough', this.value, 'rough')">
+                </div>
+                
+                <div class="pt-2 border-t border-gray-600 mt-2">
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>도시 개수 (수도 제외)</span>
+                        <span id="val-city-count">24개</span>
+                    </div>
+                    <input type="range" id="param-city-count" min="4" max="100" step="2" value="24" class="w-full" 
+                           oninput="updateLabel('val-city-count', this.value, 'count')">
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs text-gray-300 mb-1">
+                        <span>도시 밀도 (최소 거리)</span>
+                        <span id="val-city-density">5칸</span>
+                    </div>
+                    <input type="range" id="param-city-density" min="2" max="10" step="1" value="5" class="w-full" 
+                           oninput="updateLabel('val-city-density', this.value, 'density')">
+                </div>
+            </div>
+
+            <div class="flex gap-2 mb-4">
+                <button onclick="generateWorld()" class="flex-1 bg-blue-600 hover:bg-blue-500 py-2 rounded text-sm font-bold transition shadow-lg shadow-blue-900/50">맵 재생성</button>
+                <button onclick="toggleSupplyView()" id="btn-supply" class="flex-1 bg-gray-600 hover:bg-gray-500 py-2 rounded text-sm font-bold transition shadow-lg">보급망 보기</button>
+            </div>
+            
+            <div class="text-xs text-gray-400 space-y-1 pt-2 border-t border-gray-700">
+                <p>• <span class="text-blue-400 font-bold">드래그/휠:</span> 지도 이동 및 확대</p>
+                <p>• <span class="text-green-400 font-bold">클릭:</span> 타일 정보 및 상세 보급량</p>
+                <p>• <span class="text-amber-500 font-bold">갈색 선:</span> 연결된 도로망</p>
+            </div>
+        </div>
+
+        <!-- Tile Info -->
+        <div id="tile-info" class="panel p-4 rounded-lg shadow-lg hidden pointer-events-auto transition-opacity duration-200">
+            <h2 class="text-lg font-bold border-b border-gray-600 pb-2 mb-2" id="info-coords">좌표 (0, 0)</h2>
+            
+            <div class="space-y-3 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">지형 높이</span>
+                    <span id="info-height" class="font-bold text-yellow-400">평지</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">환경 (기온/습도)</span>
+                    <span id="info-biome" class="font-bold text-green-400">숲</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">이동 비용</span>
+                    <span id="info-cost" class="font-bold">10</span>
+                </div>
+                
+                <div class="mt-4 pt-2 border-t border-gray-600">
+                    <h3 class="font-bold text-blue-300 mb-1">보급 현황</h3>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400">영향권</span>
+                        <span id="info-owner" class="font-bold">중립</span>
+                    </div>
+                    
+                    <div class="mt-2 space-y-2">
+                        <!-- Supply A -->
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="w-4 text-red-400 font-bold">A</span>
+                            <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                <div id="info-supply-a" class="h-full bg-red-500" style="width: 0%"></div>
+                            </div>
+                            <span id="val-supply-a" class="w-8 text-right">0%</span>
+                        </div>
+                        <!-- Supply B -->
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="w-4 text-blue-400 font-bold">B</span>
+                            <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                <div id="info-supply-b" class="h-full bg-blue-500" style="width: 0%"></div>
+                            </div>
+                            <span id="val-supply-b" class="w-8 text-right">0%</span>
+                        </div>
+                    </div>
+                    
+                    <p id="info-logistics" class="text-xs text-gray-500 mt-2">상태 메시지</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="absolute bottom-4 right-4 z-10 panel p-3 rounded-lg text-xs pointer-events-none opacity-80">
+        <div class="grid grid-cols-2 gap-x-4 gap-y-1">
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#2b65ec]"></div> 대양</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#4287f5]"></div> 연안</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#f0e68c]"></div> 사막/해변</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#69bf64]"></div> 평원</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#2d6e32]"></div> 숲</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#1a401d]"></div> 열대우림</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#8c8c8c]"></div> 고지대</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 bg-[#e0e0e0]"></div> 툰드라/설산</div>
+            <div class="col-span-2 border-t border-gray-600 my-1"></div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 border border-white bg-red-600"></div> 국가 A</div>
+            <div class="flex items-center gap-1"><div class="w-3 h-3 border border-white bg-blue-600"></div> 국가 B</div>
+            <div class="flex items-center gap-1"><div class="w-4 h-1 bg-amber-700"></div> 도로</div>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+<script>
+/**
+ * 0. Seeded Random Number Generator
+ */
+let currentSeed = 12345;
+function mulberry32(a) {
+    return function() {
+      var t = a += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+}
+let rand = mulberry32(currentSeed);
+
+function setSeed(s) {
+    currentSeed = s;
+    rand = mulberry32(currentSeed);
+    document.getElementById('map-seed').value = currentSeed;
+}
+
+function generateNewSeed() {
+    setSeed(Math.floor(Math.random() * 1000000));
+    generateWorld();
+}
+
+/**
+ * 1. Simplex Noise Implementation (Using seeded rand)
+ */
+const SimplexNoise = (function() {
+    function Grad(x, y, z) {
+        this.x = x; this.y = y; this.z = z;
+    }
+    Grad.prototype.dot2 = function(x, y) { return this.x*x + this.y*y; };
+    var grad3 = [new Grad(1,1,0),new Grad(-1,1,0),new Grad(1,-1,0),new Grad(-1,-1,0),
+                 new Grad(1,0,1),new Grad(-1,0,1),new Grad(1,0,-1),new Grad(-1,0,-1),
+                 new Grad(0,1,1),new Grad(0,-1,1),new Grad(0,1,-1),new Grad(0,-1,-1)];
+    var perm = new Array(512);
+    var gradP = new Array(512);
+    
+    return {
+        init: function(seedFunc) {
+            var p = [];
+            for (var i=0; i<256; i++) { p[i] = Math.floor(seedFunc()*256); }
+            for(var i=0; i<512; i++) {
+                perm[i] = p[i & 255];
+                gradP[i] = grad3[perm[i] % 12];
+            }
+        },
+        noise2D: function(xin, yin) {
+            var n0, n1, n2;
+            var F2 = 0.5*(Math.sqrt(3.0)-1.0);
+            var G2 = (3.0-Math.sqrt(3.0))/6.0;
+            var s = (xin+yin)*F2; 
+            var i = Math.floor(xin+s);
+            var j = Math.floor(yin+s);
+            var t = (i+j)*G2;
+            var X0 = i-t; 
+            var Y0 = j-t;
+            var x0 = xin-X0; 
+            var y0 = yin-Y0;
+            var i1, j1;
+            if(x0>y0) {i1=1; j1=0;} else {i1=0; j1=1;}
+            var x1 = x0 - i1 + G2; 
+            var y1 = y0 - j1 + G2;
+            var x2 = x0 - 1.0 + 2.0 * G2; 
+            var y2 = y0 - 1.0 + 2.0 * G2;
+            var ii = i & 255; 
+            var jj = j & 255;
+            var gi0 = gradP[ii+perm[jj]];
+            var gi1 = gradP[ii+i1+perm[jj+j1]];
+            var gi2 = gradP[ii+1+perm[jj+1]];
+            var t0 = 0.5 - x0*x0-y0*y0;
+            if(t0<0) n0 = 0.0;
+            else { t0 *= t0; n0 = t0 * t0 * gi0.dot2(x0, y0); }
+            var t1 = 0.5 - x1*x1-y1*y1;
+            if(t1<0) n1 = 0.0;
+            else { t1 *= t1; n1 = t1 * t1 * gi1.dot2(x1, y1); }
+            var t2 = 0.5 - x2*x2-y2*y2;
+            if(t2<0) n2 = 0.0;
+            else { t2 *= t2; n2 = t2 * t2 * gi2.dot2(x2, y2); }
+            return 70.0 * (n0 + n1 + n2);
+        }
+    };
+})();
+
+/**
+ * 2. Configuration & State
+ */
+const config = {
+    hexSize: 22, // Slightly increased for emojis
+    mapRadius: 35,
+    supplyMax: 100,
+    supplyDropOff: 5,
+};
+
+const colors = {
+    OCEAN: "#2b65ec",
+    COAST: "#4287f5",
+    LOWLAND: "#8fbc8f", 
+    PLAIN: "#69bf64",
+    HIGHLAND: "#8c8c8c",
+    MOUNTAIN: "#595959",
+    SNOW: "#e0e0e0",
+    DESERT: "#f0e68c",
+    FOREST: "#2d6e32",
+    JUNGLE: "#1a401d",
+    TUNDRA: "#a8b5b5"
+};
+
+const gameState = {
+    map: new Map(), // key: "q,r", value: Tile
+    cities: [],
+    viewMode: 'terrain',
+    selectedTile: null,
+    camera: { x: 0, y: 0, zoom: 1 },
+    drag: { active: false, startX: 0, startY: 0 }
+};
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+/**
+ * 3. Hex Grid Logic (Axial Coordinates)
+ */
+function hexToPixel(q, r) {
+    const x = config.hexSize * (Math.sqrt(3) * q + Math.sqrt(3)/2 * r);
+    const y = config.hexSize * (3/2 * r);
+    return { x, y };
+}
+
+function pixelToHex(x, y) {
+    const q = (Math.sqrt(3)/3 * x - 1/3 * y) / config.hexSize;
+    const r = (2/3 * y) / config.hexSize;
+    return hexRound(q, r);
+}
+
+function hexRound(q, r) {
+    let s = -q - r;
+    let rq = Math.round(q);
+    let rr = Math.round(r);
+    let rs = Math.round(s);
+
+    const q_diff = Math.abs(rq - q);
+    const r_diff = Math.abs(rr - r);
+    const s_diff = Math.abs(rs - s);
+
+    if (q_diff > r_diff && q_diff > s_diff) rq = -rr - rs;
+    else if (r_diff > s_diff) rr = -rq - rs;
+    else rs = -rq - rr;
+
+    return { q: rq, r: rr };
+}
+
+function getNeighbors(q, r) {
+    const directions = [
+        {q: 1, r: 0}, {q: 1, r: -1}, {q: 0, r: -1},
+        {q: -1, r: 0}, {q: -1, r: 1}, {q: 0, r: 1}
+    ];
+    return directions.map(d => ({ q: q + d.q, r: r + d.r }));
+}
+
+function getKey(q, r) { return `${q},${r}`; }
+
+/**
+ * 4. Map Generation (Fractal / Perlin)
+ */
+class Tile {
+    constructor(q, r) {
+        this.q = q;
+        this.r = r;
+        this.height = 0;
+        this.moisture = 0;
+        this.temperature = 0; 
+        this.type = 'OCEAN';
+        this.biome = 'OCEAN';
+        this.cost = 1;
+        this.city = null; 
+        this.owner = null; 
+        this.supplyA = 0;
+        this.supplyB = 0;
+        this.isRoad = false; // Road flag
+    }
+}
+
+function generateWorld() {
+    // 0. Setup Seed
+    const seedInput = document.getElementById('map-seed').value;
+    if (seedInput) {
+        currentSeed = parseInt(seedInput);
+        rand = mulberry32(currentSeed);
+    } else {
+        generateNewSeed();
+        return; 
+    }
+
+    SimplexNoise.init(rand);
+    gameState.map.clear();
+    gameState.cities = [];
+    
+    const seaLevel = parseFloat(document.getElementById('param-sea').value);
+    const tempOffset = parseFloat(document.getElementById('param-temp').value);
+    const moistureOffset = parseFloat(document.getElementById('param-moisture').value);
+    const roughness = parseFloat(document.getElementById('param-rough').value);
+    const noWaterMode = document.getElementById('param-no-water').checked;
+    
+    // --- Step 1: Raw Data Generation ---
+    for (let q = -config.mapRadius; q <= config.mapRadius; q++) {
+        for (let r = -config.mapRadius; r <= config.mapRadius; r++) {
+            if (Math.abs(q + r) > config.mapRadius) continue;
+
+            let tile = new Tile(q, r);
+            
+            // Fractal Noise for Height
+            let scale = 0.07; 
+            let nx = (q) * scale;
+            let ny = (r) * scale;
+            
+            let roughFactor = (roughness > 0) ? (1 + roughness * 1.5) : (1 + roughness); 
+            if (roughFactor < 0) roughFactor = 0;
+
+            let e = 1 * SimplexNoise.noise2D(nx, ny)
+                  + 0.5 * SimplexNoise.noise2D(2*nx, 2*ny) * roughFactor
+                  + 0.25 * SimplexNoise.noise2D(4*nx, 4*ny) * roughFactor;
+            
+            e = e / (1 + 0.5 + 0.25); 
+
+            if (roughness < -0.2) e = e * (1 + roughness * 0.5); 
+            if (roughness > 0) e = e * (1 + roughness * 0.3);
+
+            e = Math.pow(Math.abs(e), 1.1);
+
+            if (!noWaterMode) {
+                let d = Math.sqrt(q*q + r*r + q*r) / config.mapRadius; 
+                let mask = 1;
+                if (d > 0.65) {
+                    let edgePos = (d - 0.65) / 0.35;
+                    mask = 1 - Math.pow(edgePos, 2); 
+                }
+                e = e * mask;
+                e = e - (seaLevel * 0.5); 
+            }
+
+            tile.height = e; 
+
+            // Moisture
+            let mx = (q + 500) * 0.06;
+            let my = (r + 500) * 0.06;
+            let m = SimplexNoise.noise2D(mx, my);
+            tile.moisture = m + moistureOffset;
+
+            // Temperature
+            let tx = (q + 800) * 0.05; 
+            let ty = (r + 800) * 0.05;
+            let temp = SimplexNoise.noise2D(tx, ty);
+            
+            tile.temperature = temp + tempOffset; 
+
+            gameState.map.set(getKey(q, r), tile);
+        }
+    }
+
+    // --- Step 2: Smoothing ---
+    let smoothedHeights = new Map();
+    gameState.map.forEach(tile => {
+        let neighbors = getNeighbors(tile.q, tile.r);
+        let sumH = tile.height;
+        let count = 1;
+        let selfWeight = 2.0; 
+        sumH *= selfWeight;
+        count += (selfWeight - 1);
+
+        neighbors.forEach(n => {
+            let nKey = getKey(n.q, n.r);
+            let nTile = gameState.map.get(nKey);
+            if (nTile) {
+                sumH += nTile.height;
+                count++;
+            }
+        });
+        smoothedHeights.set(getKey(tile.q, tile.r), sumH / count);
+    });
+
+    smoothedHeights.forEach((h, key) => {
+        let tile = gameState.map.get(key);
+        tile.height = h;
+    });
+
+    // --- Step 3: Classification ---
+    gameState.map.forEach(tile => {
+        let altitudeFactor = Math.max(0, tile.height) * 1.0; 
+        tile.temperature = tile.temperature - altitudeFactor;
+
+        let oceanThreshold = noWaterMode ? -999 : 0.1;
+        let coastThreshold = noWaterMode ? -999 : 0.15;
+
+        if (tile.height < oceanThreshold) {
+            tile.type = 'OCEAN';
+            tile.cost = 99;
+        } else if (tile.height < coastThreshold) {
+            tile.type = 'COAST';
+            tile.cost = 20;
+        } else {
+            let landHeight = tile.height; 
+            let roughAdj = roughness * 0.5;
+
+            let limitLowland = 0.35 - (roughAdj * 0.3);
+            let limitPlain = 0.65 - (roughAdj * 0.5);
+            let limitHighland = 0.8 - roughAdj;
+
+            if (landHeight < limitLowland) {
+                tile.type = 'LOWLAND';
+                tile.cost = 1;
+            } else if (landHeight < limitPlain) {
+                tile.type = 'PLAIN';
+                tile.cost = 1;
+            } else if (landHeight < limitHighland) {
+                tile.type = 'HIGHLAND';
+                tile.cost = 3;
+            } else {
+                tile.type = 'MOUNTAIN';
+                tile.cost = 8;
+            }
+        }
+
+        if (tile.type === 'OCEAN' || tile.type === 'COAST') {
+            tile.biome = tile.type;
+        } else {
+            let classTemp = tile.temperature;
+            
+            if (tempOffset > 0.25) {
+                if (classTemp < -0.25) classTemp = -0.24;
+            } else if (tempOffset < -0.25) {
+                if (classTemp > 0.25) classTemp = 0.24;
+            }
+
+            if (classTemp < -0.25) { // Cold
+                if (tile.moisture > 0.3) tile.biome = 'SNOW';
+                else if (tile.moisture > -0.15) tile.biome = 'FOREST';
+                else tile.biome = 'TUNDRA';
+            } else if (classTemp > 0.25) { // Hot
+                if (tile.moisture > 0.2) tile.biome = 'JUNGLE';
+                else if (tile.moisture < -0.2) tile.biome = 'PLAIN';
+                else tile.biome = 'FOREST'; 
+            } else { // Temperate
+                if (tile.moisture > 0.1) tile.biome = 'FOREST';
+                else tile.biome = 'PLAIN'; 
+            }
+
+            if (tile.type === 'MOUNTAIN') {
+                if (tempOffset > 0.25) {
+                    tile.biome = 'MOUNTAIN'; 
+                } else {
+                    if (tile.temperature < 0) tile.biome = 'SNOW';
+                    else tile.biome = 'MOUNTAIN';
+                }
+            }
+
+            if(tile.biome === 'FOREST') tile.cost += 1;
+            if(tile.biome === 'JUNGLE') tile.cost += 3;
+            if(tile.biome === 'TUNDRA') tile.cost += 2;
+            if(tile.biome === 'SNOW') tile.cost += 2;
+        }
+    });
+
+    placeCities();
+    buildRoads(); // Build roads after placing cities
+    calculateSupply();
+    render();
+}
+
+/**
+ * 5. City Placement
+ */
+function placeCities() {
+    const landTiles = Array.from(gameState.map.values()).filter(t => t.type !== 'OCEAN' && t.type !== 'COAST');
+    if (landTiles.length < 10) return;
+
+    landTiles.sort((a, b) => (a.q + a.r/2) - (b.q + b.r/2));
+
+    const targetCityCount = parseInt(document.getElementById('param-city-count').value);
+    const minDistance = parseInt(document.getElementById('param-city-density').value);
+
+    // Capitals
+    const capA = landTiles[Math.floor(landTiles.length * 0.05)];
+    if (capA) {
+        capA.city = { name: "수도 A", type: 'CAPITAL' };
+        capA.owner = 'RED';
+        gameState.cities.push(capA);
+    }
+
+    const capB = landTiles[Math.floor(landTiles.length * 0.95)];
+    if (capB) {
+        capB.city = { name: "수도 B", type: 'CAPITAL' };
+        capB.owner = 'BLUE';
+        gameState.cities.push(capB);
+    }
+
+    // Additional Cities
+    let attempts = 0;
+    while (gameState.cities.length < targetCityCount + 2 && attempts < 5000) {
+        attempts++;
+        const randIdx = Math.floor(rand() * landTiles.length);
+        const candidate = landTiles[randIdx];
+        
+        const tooClose = gameState.cities.some(c => {
+            const dist = getDistance(c, candidate);
+            return dist < minDistance; 
+        });
+
+        if (!tooClose && candidate.type !== 'MOUNTAIN' && candidate.type !== 'SNOW' && candidate.type !== 'COAST') {
+            const distA = getDistance(candidate, capA);
+            const distB = getDistance(candidate, capB);
+            const noise = (rand() - 0.5) * 10; 
+            const owner = (distA + noise < distB) ? 'RED' : 'BLUE';
+
+            candidate.city = { name: `거점 ${gameState.cities.length - 1}`, type: 'CITY' };
+            candidate.owner = owner;
+            gameState.cities.push(candidate);
+        }
+    }
+}
+
+/**
+ * 5.1 Road Construction (A* Algorithm)
+ */
+function buildRoads() {
+    // Connect each city to its 2 nearest neighbors to form a network
+    gameState.cities.forEach(cityTile => {
+        // Find 2 nearest other cities
+        let otherCities = gameState.cities.filter(c => c !== cityTile);
+        otherCities.sort((a, b) => getDistance(cityTile, a) - getDistance(cityTile, b));
+        
+        // Connect to top 2 closest
+        let connections = otherCities.slice(0, 2);
+        
+        connections.forEach(target => {
+            createPath(cityTile, target);
+        });
+    });
+}
+
+function createPath(start, end) {
+    // Simple A*
+    let frontier = [];
+    frontier.push({tile: start, priority: 0});
+    let cameFrom = new Map();
+    let costSoFar = new Map();
+    cameFrom.set(getKey(start.q, start.r), null);
+    costSoFar.set(getKey(start.q, start.r), 0);
+
+    let found = false;
+
+    while (frontier.length > 0) {
+        frontier.sort((a, b) => a.priority - b.priority);
+        let current = frontier.shift().tile;
+
+        if (current === end) {
+            found = true;
+            break;
+        }
+
+        let neighbors = getNeighbors(current.q, current.r);
+        for (let nPos of neighbors) {
+            let nKey = getKey(nPos.q, nPos.r);
+            let next = gameState.map.get(nKey);
+            
+            if (!next || next.type === 'OCEAN') continue;
+
+            let newCost = costSoFar.get(getKey(current.q, current.r)) + next.cost;
+            
+            if (!costSoFar.has(nKey) || newCost < costSoFar.get(nKey)) {
+                costSoFar.set(nKey, newCost);
+                let priority = newCost + getDistance(next, end);
+                frontier.push({tile: next, priority: priority});
+                cameFrom.set(nKey, current);
+            }
+        }
+    }
+
+    if (found) {
+        let current = end;
+        while (current !== start) {
+            current.isRoad = true;
+            let key = getKey(current.q, current.r);
+            current = cameFrom.get(key);
+        }
+        start.isRoad = true; // Mark start as well
+    }
+}
+
+function getDistance(t1, t2) {
+    if(!t1 || !t2) return 999;
+    return (Math.abs(t1.q - t2.q) + Math.abs(t1.q + t1.r - t2.q - t2.r) + Math.abs(t1.r - t2.r)) / 2;
+}
+
+/**
+ * 6. Supply System Logic
+ */
+function calculateSupply() {
+    gameState.map.forEach(t => {
+        t.supplyA = 0;
+        t.supplyB = 0;
+    });
+
+    function propagateSupply(faction, propName) {
+        let frontier = [];
+        gameState.cities.forEach(cityTile => {
+            if (cityTile.owner === faction) {
+                let initialSupply = (cityTile.city.type === 'CAPITAL') ? 120 : 100;
+                cityTile[propName] = initialSupply;
+                frontier.push(cityTile);
+            }
+        });
+
+        frontier.sort((a, b) => b[propName] - a[propName]);
+
+        while (frontier.length > 0) {
+            const current = frontier.shift();
+            const currentVal = current[propName];
+
+            if (currentVal <= 0) continue;
+
+            const neighbors = getNeighbors(current.q, current.r);
+            for (let nPos of neighbors) {
+                const nKey = getKey(nPos.q, nPos.r);
+                const neighbor = gameState.map.get(nKey);
+
+                if (!neighbor) continue;
+                if (neighbor.type === 'OCEAN') continue;
+
+                let moveCost = neighbor.cost * config.supplyDropOff;
+                // Roads reduce supply cost slightly? (Visual only for now, but logical)
+                if (current.isRoad && neighbor.isRoad) moveCost *= 0.8;
+
+                const newSupply = currentVal - moveCost;
+
+                if (newSupply > neighbor[propName]) {
+                    neighbor[propName] = newSupply;
+                    frontier.push(neighbor);
+                    frontier.sort((a, b) => b[propName] - a[propName]);
+                }
+            }
+        }
+    }
+
+    propagateSupply('RED', 'supplyA');
+    propagateSupply('BLUE', 'supplyB');
+}
+
+/**
+ * 7. Rendering
+ */
+function getTileColor(tile) {
+    if (gameState.viewMode === 'supply') {
+        if (tile.type === 'OCEAN') return '#1a202c';
+        
+        const sa = tile.supplyA;
+        const sb = tile.supplyB;
+        
+        if (sa <= 0 && sb <= 0) return '#333333';
+
+        const alphaA = Math.min(1, sa / 100);
+        const alphaB = Math.min(1, sb / 100);
+
+        if (sa > 0 && sb > 0) {
+            const total = sa + sb;
+            const rRatio = sa / total;
+            const bRatio = sb / total;
+            
+            const r = Math.floor(220 * rRatio + 50 * bRatio);
+            const g = Math.floor(50 * rRatio + 100 * bRatio);
+            const b = Math.floor(50 * rRatio + 255 * bRatio);
+            
+            const intensity = Math.max(alphaA, alphaB);
+            return `rgba(${r}, ${g}, ${b}, ${0.3 + intensity * 0.7})`;
+        } else if (sa > 0) {
+            return `rgba(220, 50, 50, ${0.2 + alphaA * 0.8})`;
+        } else {
+            return `rgba(50, 100, 255, ${0.2 + alphaB * 0.8})`;
+        }
+    }
+    return colors[tile.biome] || '#ff00ff';
+}
+
+function drawHex(ctx, x, y, size, color, stroke = false, strokeColor = '#000') {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle_deg = 60 * i + 30;
+        const angle_rad = Math.PI / 180 * angle_deg;
+        ctx.lineTo(x + size * Math.cos(angle_rad), y + size * Math.sin(angle_rad));
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (stroke) {
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+    }
+}
+
+function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.save();
+    ctx.translate(canvas.width / 2 + gameState.camera.x, canvas.height / 2 + gameState.camera.y);
+    ctx.scale(gameState.camera.zoom, gameState.camera.zoom);
+
+    // 1. Draw Tiles
+    gameState.map.forEach(tile => {
+        const { x, y } = hexToPixel(tile.q, tile.r);
+        const color = getTileColor(tile);
+        
+        drawHex(ctx, x, y, config.hexSize, color, true, 'rgba(0,0,0,0.1)');
+    });
+
+    // 2. Draw Roads (Lines between connected road tiles)
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#78350f'; // Amber-900 (Road Color)
+    ctx.lineCap = 'round';
+    
+    gameState.map.forEach(tile => {
+        if (!tile.isRoad) return;
+        const { x, y } = hexToPixel(tile.q, tile.r);
+        
+        // Check neighbors
+        const neighbors = getNeighbors(tile.q, tile.r);
+        neighbors.forEach(n => {
+            const nKey = getKey(n.q, n.r);
+            const nTile = gameState.map.get(nKey);
+            // Draw line if neighbor is also a road (draws twice, but simple)
+            // Or only draw if nTile isRoad
+            if (nTile && nTile.isRoad) {
+                const nPos = hexToPixel(nTile.q, nTile.r);
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(nPos.x, nPos.y);
+                ctx.stroke();
+            }
+        });
+    });
+
+    // 3. Draw Objects (Cities, Emojis)
+    ctx.font = `${config.hexSize}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    gameState.map.forEach(tile => {
+        const { x, y } = hexToPixel(tile.q, tile.r);
+
+        // Draw City / Emoji
+        if (tile.city) {
+            // City Background Circle
+            ctx.fillStyle = tile.owner === 'RED' ? '#ef4444' : (tile.owner === 'BLUE' ? '#3b82f6' : '#ffffff');
+            ctx.beginPath();
+            ctx.arc(x, y, config.hexSize * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillText('🏠', x, y);
+        } else {
+            // Emojis for specific terrains
+            if (tile.type === 'MOUNTAIN' || tile.biome === 'JUNGLE') {
+                ctx.fillText('⛰️', x, y);
+            } else if (tile.biome === 'FOREST') {
+                ctx.fillText('🌲', x, y);
+            }
+        }
+
+        if (gameState.selectedTile === tile) {
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            drawHex(ctx, x, y, config.hexSize, 'transparent', true, 'white');
+        }
+    });
+
+    ctx.restore();
+}
+
+/**
+ * 8. Interactions
+ */
+function updateLabel(id, value, type) {
+    const label = document.getElementById(id);
+    let text = value;
+    if (type === 'sea') {
+        if (value < -0.1) text = "초대륙";
+        else if (value < 0.1) text = "꽉 찬 대륙";
+        else if (value < 0.3) text = "보통";
+        else text = "군도";
+    } else if (type === 'moisture') {
+        if (value < -0.1) text = "건조함";
+        else if (value > 0.1) text = "습함";
+        else text = "보통";
+    } else if (type === 'temp') {
+        if (value < -0.2) text = "한랭 (Cold)";
+        else if (value > 0.2) text = "온난 (Hot)";
+        else text = "보통";
+    } else if (type === 'rough') {
+        if (value < -0.4) text = "대평원";
+        else if (value < 0.1) text = "보통";
+        else text = "험난함";
+    } else if (type === 'count') {
+        text = `${value}개`;
+    } else if (type === 'density') {
+        text = `${value}칸`;
+    }
+    label.innerText = text;
+}
+
+function resizeCanvas() {
+    canvas.width = document.getElementById('canvas-container').clientWidth;
+    canvas.height = document.getElementById('canvas-container').clientHeight;
+    render();
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+canvas.addEventListener('mousedown', e => {
+    gameState.drag.active = true;
+    gameState.drag.startX = e.clientX - gameState.camera.x;
+    gameState.drag.startY = e.clientY - gameState.camera.y;
+});
+
+canvas.addEventListener('mousemove', e => {
+    if (gameState.drag.active) {
+        gameState.camera.x = e.clientX - gameState.drag.startX;
+        gameState.camera.y = e.clientY - gameState.drag.startY;
+        render();
+    }
+});
+
+canvas.addEventListener('mouseup', () => { gameState.drag.active = false; });
+canvas.addEventListener('mouseleave', () => { gameState.drag.active = false; });
+
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    gameState.camera.zoom -= e.deltaY * 0.001;
+    gameState.camera.zoom = Math.min(Math.max(0.5, gameState.camera.zoom), 3);
+    render();
+});
+
+canvas.addEventListener('click', e => {
+    if (Math.abs(e.clientX - gameState.drag.startX - gameState.camera.x) > 5) return;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left - canvas.width/2 - gameState.camera.x) / gameState.camera.zoom;
+    const mouseY = (e.clientY - rect.top - canvas.height/2 - gameState.camera.y) / gameState.camera.zoom;
+    const hex = pixelToHex(mouseX, mouseY);
+    const tile = gameState.map.get(getKey(hex.q, hex.r));
+    if (tile) {
+        gameState.selectedTile = tile;
+        updateUI(tile);
+        render();
+    }
+});
+
+function updateUI(tile) {
+    const infoPanel = document.getElementById('tile-info');
+    infoPanel.classList.remove('hidden');
+    
+    document.getElementById('info-coords').innerText = `좌표 (${tile.q}, ${tile.r})`;
+    
+    const biomeNames = {
+        'OCEAN': '대양', 'COAST': '연안', 'LOWLAND': '저지대',
+        'PLAIN': '평원', 'HIGHLAND': '고지대', 'MOUNTAIN': '산맥',
+        'SNOW': '설산', 'DESERT': '사막', 'FOREST': '숲',
+        'JUNGLE': '열대우림', 'TUNDRA': '툰드라'
+    };
+
+    document.getElementById('info-height').innerText = biomeNames[tile.type] || tile.type;
+    document.getElementById('info-biome').innerText = biomeNames[tile.biome] || tile.biome;
+    document.getElementById('info-cost').innerText = tile.cost;
+
+    const ownerName = tile.owner === 'RED' ? '국가 A (Red)' : (tile.owner === 'BLUE' ? '국가 B (Blue)' : '중립');
+    const ownerClass = tile.owner === 'RED' ? 'font-bold text-red-400' : (tile.owner === 'BLUE' ? 'font-bold text-blue-400' : 'font-bold text-gray-400');
+    document.getElementById('info-owner').innerText = ownerName;
+    document.getElementById('info-owner').className = ownerClass;
+
+    // Supply Display A
+    const sa = Math.floor(tile.supplyA);
+    const sb = Math.floor(tile.supplyB);
+    
+    document.getElementById('info-supply-a').style.width = `${sa}%`;
+    document.getElementById('val-supply-a').innerText = `${sa}%`;
+    
+    document.getElementById('info-supply-b').style.width = `${sb}%`;
+    document.getElementById('val-supply-b').innerText = `${sb}%`;
+
+    const logEl = document.getElementById('info-logistics');
+    if (sa > 0 && sb > 0) {
+        logEl.innerHTML = `<span class="text-purple-400 font-bold">⚠️ 보급 교차 (분쟁 지역)</span>`;
+    } else if (sa > 0) {
+        logEl.innerHTML = `<span class="text-red-400">국가 A 보급권</span>`;
+    } else if (sb > 0) {
+        logEl.innerHTML = `<span class="text-blue-400">국가 B 보급권</span>`;
+    } else {
+        logEl.innerHTML = `<span class="text-gray-500">보급 없음</span>`;
+    }
+}
+
+// Global functions
+window.generateWorld = generateWorld;
+window.generateNewSeed = generateNewSeed;
+window.toggleSupplyView = function() {
+    const btn = document.getElementById('btn-supply');
+    if (gameState.viewMode === 'terrain') {
+        gameState.viewMode = 'supply';
+        btn.innerText = "지형 보기";
+        btn.classList.add('bg-green-600', 'hover:bg-green-500');
+        btn.classList.remove('bg-gray-600', 'hover:bg-gray-500');
+    } else {
+        gameState.viewMode = 'terrain';
+        btn.innerText = "보급망 보기";
+        btn.classList.add('bg-gray-600', 'hover:bg-gray-500');
+        btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+    }
+    render();
+};
+window.updateLabel = updateLabel;
+
+resizeCanvas();
+generateNewSeed();
+</script>
+</body>
+</html>
